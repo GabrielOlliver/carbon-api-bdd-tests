@@ -1,40 +1,64 @@
+# Nome padrao do projeto. Em staging/producao o pipeline sobrescreve com -p
+# (carbon-staging / carbon-prod), isolando containers, rede e volumes de cada ambiente.
+name: carbon-api
+
 services:
 
+  # ------------------------------------------------------------------
+  # Banco de dados Oracle 23ai Free
+  # ------------------------------------------------------------------
   oracle-db:
     image: gvenzl/oracle-free:23-slim
-    container_name: esg_oracle_db
+    restart: unless-stopped
     environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
-      APP_USER: ${APP_USER}
-      APP_USER_PASSWORD: ${APP_USER_PASSWORD}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?defina ORACLE_PASSWORD no .env}
+      APP_USER: ${APP_USER:?defina APP_USER no .env}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:?defina APP_USER_PASSWORD no .env}
     ports:
-      - "1521:1521"
+      # Publicado SOMENTE em 127.0.0.1: acessivel da propria maquina
+      # (DBeaver, Rider), nunca exposto para a internet.
+      - "127.0.0.1:${DB_PORT:-1521}:1521"
     volumes:
-      - oracle_data:/opt/oracle/oradata
+      - oracle_data:/opt/oracle/oradata   # dados sobrevivem a recriacao do container
+    networks:
+      - carbon-net
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
-      interval: 30s
+      interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 60s
+      retries: 20
+      start_period: 90s
 
+  # ------------------------------------------------------------------
+  # API .NET 8
+  # ------------------------------------------------------------------
   carbon-api:
+    # Localmente: construida a partir do Dockerfile.
+    # No deploy: API_IMAGE aponta para a imagem publicada pelo pipeline no GHCR.
+    image: ${API_IMAGE:-carbon-api:local}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: esg_carbon_api_dotnet
-    ports:
-      - "8080:8080"
+    restart: unless-stopped
     environment:
+      # "oracle-db" e o nome do servico: o DNS interno da rede do Compose resolve para o container do banco
       ConnectionStrings__OracleConnection: "User Id=${APP_USER};Password=${APP_USER_PASSWORD};Data Source=oracle-db:1521/FREEPDB1;"
-      Jwt__Secret: ${JWT_SECRET}
-      Jwt__Issuer: ${JWT_ISSUER}
-      Jwt__Audience: ${JWT_AUDIENCE}
-      Jwt__ExpirationHours: ${JWT_EXPIRATION_HOURS}
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      Jwt__Secret: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      Jwt__Issuer: ${JWT_ISSUER:-CarbonApi}
+      Jwt__Audience: ${JWT_AUDIENCE:-CarbonApiUsers}
+      Jwt__ExpirationHours: ${JWT_EXPIRATION_HOURS:-24}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    networks:
+      - carbon-net
     depends_on:
       oracle-db:
-        condition: service_healthy
+        condition: service_healthy   # so sobe a API quando o Oracle estiver pronto
+
+networks:
+  carbon-net:
+    driver: bridge
 
 volumes:
   oracle_data:

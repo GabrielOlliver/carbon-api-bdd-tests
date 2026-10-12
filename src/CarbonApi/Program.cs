@@ -6,6 +6,7 @@ using CarbonApi.Repositories.Interfaces;
 using CarbonApi.Services;
 using CarbonApi.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -15,6 +16,12 @@ var builder = WebApplication.CreateBuilder(args);
 // ===== DbContext Oracle =====
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseOracle(builder.Configuration.GetConnectionString("OracleConnection")));
+
+// ===== Health Checks =====
+// /health       -> liveness: o processo esta de pe?
+// /health/ready -> readiness: a API consegue falar com o banco?
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>("database", tags: new[] { "ready" });
 
 // ===== Repositories =====
 builder.Services.AddScoped<IEmpresaRepository, EmpresaRepository>();
@@ -100,17 +107,43 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// ===== Migrations automaticas =====
+// Cria/atualiza as tabelas (e o seed do usuario admin) na inicializacao.
+// O retry cobre o caso do Oracle ainda estar terminando de subir.
+if (app.Configuration.GetValue("Database:ApplyMigrations", true))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    const int maxTentativas = 10;
+    for (var tentativa = 1; ; tentativa++)
+    {
+        try
+        {
+            db.Database.Migrate();
+            logger.LogInformation("Migrations aplicadas com sucesso.");
+            break;
+        }
+        catch (Exception ex) when (tentativa < maxTentativas)
+        {
+            logger.LogWarning(ex, "Banco indisponivel (tentativa {Tentativa}/{Max}). Nova tentativa em 5s...", tentativa, maxTentativas);
+            Thread.Sleep(TimeSpan.FromSeconds(5));
+        }
+    }
+}
+
 // ===== Middleware =====
 app.UseMiddleware<ExceptionMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Swagger habilitado em todos os ambientes (Development, Staging, Production)
+// para permitir a validacao visual dos deploys.
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
 app.Run();

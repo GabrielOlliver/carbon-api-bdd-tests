@@ -1,25 +1,23 @@
-﻿**/.classpath
-**/.dockerignore
-**/.env
-**/.git
-**/.gitignore
-**/.project
-**/.settings
-**/.toolstarget
+# Nada disso precisa ir para o contexto de build da imagem
+**/bin
+**/obj
 **/.vs
 **/.vscode
-**/*.*proj.user
-**/*.dbmdl
-**/*.jfm
-**/bin
-**/charts
-**/docker-compose*
-**/compose*
-**/Dockerfile*
-**/node_modules
-**/npm-debug.log
-**/obj
-**/secrets.dev.yaml
-**/values.dev.yaml
-LICENSE
+**/.idea
+**/.DS_Store
+**/*.user
+.git
+.github
+.gitignore
+tests/
+docs/
+
+# Segredos NUNCA entram na imagem
+**/.env
+**/.env.*
+!.env.example
+
+# Arquivos de orquestracao/documentacao
+docker-compose*.yml
+Dockerfile*
 README.md
