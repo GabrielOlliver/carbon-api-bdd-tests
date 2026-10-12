@@ -1,0 +1,18 @@
+# Segredos - NUNCA versionar
+.env
+*.env.local
+
+# Build .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+TestResults/
+*.user
+
+# IDEs / SO
+.idea/
+.vs/
+.vscode/
+.DS_Store

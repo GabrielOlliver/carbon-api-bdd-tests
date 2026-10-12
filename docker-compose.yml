@@ -1,0 +1,40 @@
+services:
+
+  oracle-db:
+    image: gvenzl/oracle-free:23-slim
+    container_name: esg_oracle_db
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+      APP_USER: ${APP_USER}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  carbon-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: esg_carbon_api_dotnet
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__OracleConnection: "User Id=${APP_USER};Password=${APP_USER_PASSWORD};Data Source=oracle-db:1521/FREEPDB1;"
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: ${JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE}
+      Jwt__ExpirationHours: ${JWT_EXPIRATION_HOURS}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+    depends_on:
+      oracle-db:
+        condition: service_healthy
+
+volumes:
+  oracle_data:
