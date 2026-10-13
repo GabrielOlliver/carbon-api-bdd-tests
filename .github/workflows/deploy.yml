@@ -1,0 +1,97 @@
+name: Deploy (reutilizavel)
+
+# Workflow reutilizavel: a MESMA logica de deploy serve para staging e producao.
+# O que muda entre os ambientes chega por inputs e pelos secrets de cada environment.
+on:
+  workflow_call:
+    inputs:
+      environment:            { required: true, type: string }   # staging | production
+      aspnetcore_environment: { required: true, type: string }   # Staging | Production
+      api_port:               { required: true, type: number }
+      db_port:                { required: true, type: number }
+      image:                  { required: true, type: string }   # ghcr.io/...:<sha>
+
+jobs:
+  deploy:
+    name: Deploy em ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # Liga o job ao GitHub Environment: libera os secrets do ambiente,
+    # aplica regras de protecao (aprovacao em producao) e mostra a URL no Actions
+    environment:
+      name: ${{ inputs.environment }}
+      url: http://${{ vars.VM_HOST }}:${{ inputs.api_port }}/swagger
+    concurrency: deploy-${{ inputs.environment }}   # nunca dois deploys simultaneos no mesmo ambiente
+    env:
+      PROJECT: carbon-${{ inputs.environment }}     # nome do projeto Compose (isola containers/rede/volume)
+      REMOTE_DIR: carbon/${{ inputs.environment }}
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar acesso SSH a VM
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ vars.VM_HOST }}" >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<CFG
+          Host vm
+            HostName ${{ vars.VM_HOST }}
+            User ${{ vars.VM_USER }}
+            IdentityFile ~/.ssh/deploy_key
+          CFG
+
+      - name: Copiar docker-compose.yml para a VM
+        run: |
+          ssh vm "mkdir -p ~/$REMOTE_DIR"
+          scp docker-compose.yml vm:~/$REMOTE_DIR/docker-compose.yml
+
+      - name: Gerar .env do ambiente a partir dos GitHub Secrets
+        run: |
+          cat <<'ENV' | ssh vm "umask 077 && cat > ~/$REMOTE_DIR/.env"
+          ORACLE_PASSWORD=${{ secrets.ORACLE_PASSWORD }}
+          APP_USER=carbon_app
+          APP_USER_PASSWORD=${{ secrets.APP_USER_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_ISSUER=CarbonApi
+          JWT_AUDIENCE=CarbonApiUsers
+          JWT_EXPIRATION_HOURS=24
+          ASPNETCORE_ENVIRONMENT=${{ inputs.aspnetcore_environment }}
+          API_PORT=${{ inputs.api_port }}
+          DB_PORT=${{ inputs.db_port }}
+          API_IMAGE=${{ inputs.image }}
+          ENV
+
+      - name: Pull da nova imagem e subida da stack
+        run: |
+          ssh vm "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin \
+            && cd ~/$REMOTE_DIR \
+            && docker compose -p $PROJECT pull carbon-api \
+            && docker compose -p $PROJECT up -d --no-build --remove-orphans \
+            && docker compose -p $PROJECT ps"
+
+      - name: Smoke test - /health/ready
+        run: |
+          URL="http://${{ vars.VM_HOST }}:${{ inputs.api_port }}/health/ready"
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 5 "$URL"; then
+              echo ""; echo "API saudavel em $URL (tentativa $i)"; exit 0
+            fi
+            echo "Aguardando a API ficar pronta... tentativa $i/60"; sleep 10
+          done
+          echo "A API nao ficou saudavel. Ultimos logs:"
+          ssh vm "cd ~/$REMOTE_DIR && docker compose -p $PROJECT logs --tail=80"
+          exit 1
+
+      - name: Resumo do deploy
+        if: success()
+        run: |
+          {
+            echo "## Deploy em ${{ inputs.environment }} concluido"
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Imagem | \`${{ inputs.image }}\` |"
+            echo "| ASPNETCORE_ENVIRONMENT | ${{ inputs.aspnetcore_environment }} |"
+            echo "| Swagger | http://${{ vars.VM_HOST }}:${{ inputs.api_port }}/swagger |"
+            echo "| Health | http://${{ vars.VM_HOST }}:${{ inputs.api_port }}/health/ready |"
+          } >> "$GITHUB_STEP_SUMMARY"

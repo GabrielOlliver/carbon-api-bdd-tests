@@ -3,10 +3,15 @@ name: CI/CD - Carbon API
 # Quando o pipeline roda
 on:
   push:
-    branches: [main]          # todo push na main
+    branches: [main]          # todo push na main -> CI + CD
   pull_request:
-    branches: [main]          # todo PR aberto contra a main
+    branches: [main]          # PR contra a main -> somente CI (sem deploy)
   workflow_dispatch:          # botao "Run workflow" manual na aba Actions
+
+# Permissoes minimas do GITHUB_TOKEN: ler o codigo e publicar a imagem no GHCR
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   # ==================================================================
@@ -45,24 +50,77 @@ jobs:
           path: TestResults
 
   # ==================================================================
-  # CI 2/2 - Garante que a imagem Docker continua construindo
+  # CI 2/2 - Build da imagem Docker e publicacao no GitHub Container Registry
   # ==================================================================
-  docker-build:
-    name: Build da imagem Docker
+  docker-image:
+    name: Build e Publicacao da Imagem
     runs-on: ubuntu-latest
     needs: build-test           # so roda se build e testes passarem
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Checkout do codigo
         uses: actions/checkout@v4
 
+      - name: Definir nome e tag da imagem
+        id: meta
+        run: |
+          # GHCR exige nome minusculo; a tag e o SHA curto do commit (rastreabilidade)
+          REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "image=${REPO}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "latest=${REPO}:latest"         >> "$GITHUB_OUTPUT"
+
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build da imagem
+      - name: Login no GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false           # na Fase 5 passa a publicar no GHCR
-          tags: carbon-api:ci-${{ github.sha }}
+          push: ${{ github.event_name != 'pull_request' }}   # PR so valida o build
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.latest }}
           cache-from: type=gha  # reaproveita camadas entre execucoes
           cache-to: type=gha,mode=max
+
+  # ==================================================================
+  # CD 1/2 - Deploy automatico em STAGING
+  # ==================================================================
+  deploy-staging:
+    name: Deploy Staging
+    needs: docker-image
+    # So faz deploy em push/manual na main e quando a VM ja estiver configurada
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VM_HOST != ''
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      aspnetcore_environment: Staging
+      api_port: 8081
+      db_port: 1522
+      image: ${{ needs.docker-image.outputs.image }}
+    secrets: inherit
+
+  # ==================================================================
+  # CD 2/2 - Deploy em PRODUCAO (exige aprovacao manual no environment)
+  # ==================================================================
+  deploy-production:
+    name: Deploy Producao
+    needs: [docker-image, deploy-staging]   # so promove o que passou em staging
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VM_HOST != ''
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      aspnetcore_environment: Production
+      api_port: 8080
+      db_port: 1521
+      image: ${{ needs.docker-image.outputs.image }}
+    secrets: inherit
