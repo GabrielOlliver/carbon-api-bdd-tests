@@ -76,7 +76,7 @@ scripts/run-bdd-tests.sh           ← execução local em um comando
 
 ## 🧪 Cenários e cobertura
 
-**38 testes** (32 cenários + linhas de *Esquema do Cenário*) cobrindo **todos os endpoints**:
+**38 testes** (34 cenários + linhas de *Esquema do Cenário*) cobrindo **todos os endpoints**:
 
 | Feature | Endpoints | Positivos | Negativos |
 |---|---|---|---|
