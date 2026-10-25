@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>CarbonApi.BddTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reqnroll: sucessor open-source do SpecFlow (BDD com Gherkin para .NET) -->
+    <PackageReference Include="Reqnroll.xUnit" Version="3.3.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Assercoes legiveis -->
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+    <!-- Validacao de contrato com JSON Schema -->
+    <PackageReference Include="NJsonSchema" Version="11.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Schemas\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="reqnroll.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

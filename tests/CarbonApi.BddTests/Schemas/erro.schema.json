@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Resposta de erro padronizada",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "timestamp",
+    "status",
+    "erro",
+    "mensagem",
+    "caminho",
+    "errosCampos"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 400,
+      "maximum": 599
+    },
+    "erro": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mensagem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "caminho": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "errosCampos": {
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  }
+}

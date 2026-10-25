@@ -1,24 +1,21 @@
-name: CI/CD - Carbon API
+name: CI - Testes Automatizados (Carbon API)
 
-# Quando o pipeline roda
 on:
   push:
-    branches: [main]          # todo push na main -> CI + CD
+    branches: [main]
   pull_request:
-    branches: [main]          # PR contra a main -> somente CI (sem deploy)
-  workflow_dispatch:          # botao "Run workflow" manual na aba Actions
+    branches: [main]
+  workflow_dispatch:
 
-# Permissoes minimas do GITHUB_TOKEN: ler o codigo e publicar a imagem no GHCR
 permissions:
   contents: read
-  packages: write
 
 jobs:
   # ==================================================================
-  # CI 1/2 - Compila a solucao e executa os testes automatizados
+  # 1) Build da solucao + testes unitarios (xUnit + Moq, sem banco)
   # ==================================================================
   build-test:
-    name: Build e Testes
+    name: Build e Testes Unitarios
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do codigo
@@ -29,98 +26,87 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore das dependencias
-        run: dotnet restore CarbonApi.sln
+      - name: Restore e build (Release)
+        run: |
+          dotnet restore CarbonApi.sln
+          dotnet build CarbonApi.sln -c Release --no-restore
 
-      - name: Build (Release)
-        run: dotnet build CarbonApi.sln -c Release --no-restore
-
-      - name: Testes automatizados
+      - name: Testes unitarios
         run: >
-          dotnet test CarbonApi.sln -c Release --no-build
-          --logger "trx;LogFileName=test-results.trx"
-          --logger "console;verbosity=normal"
+          dotnet test tests/CarbonApi.Tests/CarbonApi.Tests.csproj -c Release --no-build
+          --logger "trx;LogFileName=unit-tests.trx"
           --results-directory TestResults
 
-      - name: Publicar relatorio de testes
-        if: always()            # publica mesmo se algum teste falhar
+      - name: Publicar resultado dos testes unitarios
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: testes-unitarios
           path: TestResults
 
   # ==================================================================
-  # CI 2/2 - Build da imagem Docker e publicacao no GitHub Container Registry
+  # 2) Testes BDD de API (Reqnroll + Gherkin) contra a stack real
+  #    API + Oracle sobem com docker compose dentro do runner
   # ==================================================================
-  docker-image:
-    name: Build e Publicacao da Imagem
+  bdd-tests:
+    name: Testes BDD de API (Gherkin + JSON Schema)
     runs-on: ubuntu-latest
-    needs: build-test           # so roda se build e testes passarem
-    outputs:
-      image: ${{ steps.meta.outputs.image }}
+    needs: build-test
+    env:
+      API_BASE_URL: http://localhost:8080
     steps:
       - name: Checkout do codigo
         uses: actions/checkout@v4
 
-      - name: Definir nome e tag da imagem
-        id: meta
+      - name: Gerar .env efemero (senhas aleatorias, so para este run)
         run: |
-          # GHCR exige nome minusculo; a tag e o SHA curto do commit (rastreabilidade)
-          REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
-          echo "image=${REPO}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "latest=${REPO}:latest"         >> "$GITHUB_OUTPUT"
+          cat > .env <<ENV
+          ORACLE_PASSWORD=Ora$(openssl rand -hex 8)
+          APP_USER=carbon_app
+          APP_USER_PASSWORD=App$(openssl rand -hex 8)
+          JWT_SECRET=$(openssl rand -hex 32)
+          ASPNETCORE_ENVIRONMENT=Development
+          API_PORT=8080
+          DB_PORT=1521
+          ENV
 
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Subir a stack (API + Oracle)
+        run: docker compose up -d --build
 
-      - name: Login no GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+      - name: Aguardar a API ficar pronta (/health/ready)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health/ready; then echo ""; echo "API pronta"; exit 0; fi
+            echo "Aguardando API + Oracle... ($i/60)"; sleep 10
+          done
+          docker compose logs --tail=100
+          exit 1
+
+      - name: Instalar .NET 8
+        uses: actions/setup-dotnet@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          dotnet-version: '8.0.x'
 
-      - name: Build e push da imagem
-        uses: docker/build-push-action@v6
+      - name: Executar cenarios BDD
+        run: >
+          dotnet test tests/CarbonApi.BddTests/CarbonApi.BddTests.csproj -c Release
+          --logger "trx;LogFileName=bdd-tests.trx"
+          --logger "console;verbosity=normal"
+          --results-directory TestResults
+
+      - name: Publicar relatorios (TRX + HTML do Reqnroll)
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}   # PR so valida o build
-          tags: |
-            ${{ steps.meta.outputs.image }}
-            ${{ steps.meta.outputs.latest }}
-          cache-from: type=gha  # reaproveita camadas entre execucoes
-          cache-to: type=gha,mode=max
+          name: relatorios-bdd
+          path: |
+            TestResults
+            tests/CarbonApi.BddTests/bin/Release/net8.0/reqnroll_report.html
 
-  # ==================================================================
-  # CD 1/2 - Deploy automatico em STAGING
-  # ==================================================================
-  deploy-staging:
-    name: Deploy Staging
-    needs: docker-image
-    # So faz deploy em push/manual na main e quando a VM ja estiver configurada
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VM_HOST != ''
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: staging
-      aspnetcore_environment: Staging
-      api_port: 8081
-      db_port: 1522
-      image: ${{ needs.docker-image.outputs.image }}
-    secrets: inherit
+      - name: Logs da API (somente em caso de falha)
+        if: failure()
+        run: docker compose logs --tail=200 carbon-api
 
-  # ==================================================================
-  # CD 2/2 - Deploy em PRODUCAO (exige aprovacao manual no environment)
-  # ==================================================================
-  deploy-production:
-    name: Deploy Producao
-    needs: [docker-image, deploy-staging]   # so promove o que passou em staging
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VM_HOST != ''
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: production
-      aspnetcore_environment: Production
-      api_port: 8080
-      db_port: 1521
-      image: ${{ needs.docker-image.outputs.image }}
-    secrets: inherit
+      - name: Derrubar a stack
+        if: always()
+        run: docker compose down -v

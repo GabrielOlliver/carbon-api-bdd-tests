@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lista paginada de emissoes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "data",
+    "pageNumber",
+    "pageSize",
+    "totalRecords",
+    "totalPages",
+    "hasNextPage",
+    "hasPreviousPage"
+  ],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/item"
+      }
+    },
+    "pageNumber": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "totalRecords": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "totalPages": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hasNextPage": {
+      "type": "boolean"
+    },
+    "hasPreviousPage": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "empresaId",
+        "empresaNome",
+        "quantidadeTco2e",
+        "escopo",
+        "descricao",
+        "dataEmissao",
+        "dataRegistro"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "empresaId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "empresaNome": {
+          "type": "string"
+        },
+        "quantidadeTco2e": {
+          "type": "number",
+          "minimum": 0.0001
+        },
+        "escopo": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "descricao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataEmissao": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        },
+        "dataRegistro": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lista paginada de compensacoes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "data",
+    "pageNumber",
+    "pageSize",
+    "totalRecords",
+    "totalPages",
+    "hasNextPage",
+    "hasPreviousPage"
+  ],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/item"
+      }
+    },
+    "pageNumber": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "totalRecords": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "totalPages": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hasNextPage": {
+      "type": "boolean"
+    },
+    "hasPreviousPage": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "empresaId",
+        "empresaNome",
+        "tipo",
+        "quantidadeTco2e",
+        "descricao",
+        "certificadoUrl",
+        "dataCompensacao",
+        "dataRegistro"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "empresaId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "empresaNome": {
+          "type": "string"
+        },
+        "tipo": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "quantidadeTco2e": {
+          "type": "number",
+          "minimum": 0.0001
+        },
+        "descricao": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "certificadoUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dataCompensacao": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        },
+        "dataRegistro": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+        }
+      }
+    }
+  }
+}

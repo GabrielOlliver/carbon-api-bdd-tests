@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Resposta de login",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "token",
+    "tipo",
+    "email",
+    "role"
+  ],
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 20
+    },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "Bearer"
+      ]
+    },
+    "email": {
+      "type": "string",
+      "pattern": "^.+@.+$"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "ADMIN",
+        "EMPRESA"
+      ]
+    }
+  }
+}
