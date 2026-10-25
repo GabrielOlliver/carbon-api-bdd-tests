@@ -199,3 +199,5 @@ O job BDD só roda se o build e os testes unitários passarem (`needs`). Em caso
 | Pipeline de CI (2 jobs) | ![](docs/prints/04-ci-workflow.png) |
 | Cenários executados no CI | ![](docs/prints/05-ci-bdd-cenarios.png) |
 | Relatórios publicados como artifacts | ![](docs/prints/06-ci-artifacts.png) |
+
+> 📄 Documentação completa (cenários Gherkin, configurações e evidências): [`docs/Documentacao_Testes_BDD_CarbonApi.pdf`](docs/Documentacao_Testes_BDD_CarbonApi.pdf)
